@@ -1,9 +1,12 @@
+'use strict'
 const fs = require('fs').promises;
 const fs2 = require('fs');
 const path = require('path');
 const process = require('process');
 const {authenticate} = require('@google-cloud/local-auth');
 const {google} = require('googleapis');
+// const express=  
+
 
 // If modifying these scopes, delete token.json.
 const SCOPES = [
@@ -62,7 +65,7 @@ async function saveCredentials(client) {
  * Load or request or authorization to call APIs.
  *
  */
-async function authorize() {
+async function authorize(cb) {
   let client = await loadSavedCredentialsIfExist();
   if (client) {
     return client;
@@ -76,6 +79,9 @@ async function authorize() {
   }
   return client;
 }
+//--------------------------------------------------------------------------------------------------------------
+// LIST FILES
+//--------------------------------------------------------------------------------------------------------------
 
 /**
  * Lists the names and IDs of up to 10 files.
@@ -84,9 +90,7 @@ async function authorize() {
 async function listFiles(authClient) {
   const drive = google.drive({version: 'v3', auth: authClient});
   const res = await drive.files.list({
-    pageSize: 10,
     fields: 'nextPageToken, files(id, name)',
-    // fields: 'name,starred,shared,permissions(kind,type,role)',
   });
   const files = res.data.files;
   if (files.length === 0) {
@@ -96,30 +100,33 @@ async function listFiles(authClient) {
 
   console.log('Files:');
   files.map((file) => {
-    console.log(`${file.name} (${file.id})`);
-    // watchFile(file.id, authClient);
+    console.log(`File name: ${file.name} ,\t\tFile ID: (${file.id})`);
   });
 }
-
+//--------------------------------------------------------------------------------------------------------------
+// DOWNLOAD MEDIA FILE
+//--------------------------------------------------------------------------------------------------------------
 const downloadFile = async (fileId, authClient) => {
-  const fileWrite = fs2.createWriteStream('./abc')
+  try {
+  const fileWrite = fs2.createWriteStream('./'+ fileId)
   fileWrite.on('finish', function () {
     console.log('downloaded the file');
   });
+  fileWrite.on('error' ,(e)=>{console.log(e)});
 
   const drive = google.drive({version: 'v3', authClient});
-  
-  const file = await drive.files.get(
-    {
-      auth: authClient,
-      fileId: fileId,
-      alt: 'media',
-    },
-    { responseType: 'stream' }
-  );
 
-  if (file) {
-    file.data
+    const file = await drive.files.get(
+      {
+        auth: authClient,
+        fileId: fileId,
+        alt: 'media',
+      },
+      { responseType: 'stream' }
+      );
+      
+      if (file) {
+        file.data
       .on('end', () => {
         console.log('Done');
       })
@@ -127,10 +134,14 @@ const downloadFile = async (fileId, authClient) => {
         console.log('Error', err);
       })
       .pipe(fileWrite);
-  }
-
+    }
+  }catch(e){console.log(e)}
+    
 }
 
+//--------------------------------------------------------------------------------------------------------------
+// List Users for a file (static version)
+//--------------------------------------------------------------------------------------------------------------
 async function listUsers(fileId, authClient) {
   const drive = google.drive({version: 'v3', auth: authClient});
   const res = await drive.permissions.list({
@@ -139,108 +150,94 @@ async function listUsers(fileId, authClient) {
     // fields: 'permissions(kind,type,role)',
     fileId: fileId
   });
-
+  console.log('List of users owning/sharing the file:');
   console.log(res?.data?.permissions);
   
 }
 
+//--------------------------------------------------------------------------------------------------------------
+// List Users for a file (real-time updated version)
+//--------------------------------------------------------------------------------------------------------------
 
-// const { GoogleDrive } = require('googleapis');
-
-async function getChanges(fileID, authClient) {
-  const drive = google.drive({version: 'v3', auth: authClient});
-  // Subscribe to changes
-  const subscription = await drive.changes.watch({
-    userId: 'me',
-    fileId: fileID,
-    fields: 'nextPageToken, changes(id, createdTime, fileId, mimeType, name, parents, sharing, trashed)',
-    callback: changes => {
-      // Handle the changes
-      console.log(changes);
-    },
-  }).execute();
-
-  // Unsubscribe from changes
-  await subscription.stop();
-}
-
-
+var g_shared_users = [];
 
 // Set up file watch
 function watchFile(fileId, authClient) {
-    const drive = google.drive({ version: 'v3', auth: authClient });
-    drive.files.watch({
-      // userId: 'me',
-      fileId: fileId,
-      // resource: {
-      //   id: fileId,
-      //   changeType: 'file' 
-      //   // type: 'web_hook',
-      // },
-      // pageToken: null,
-      // fields: 'newStartPageToken,startPageToken',
-      fields: 'metadata',
-      callback: (change) => {
-        console.log(change)
-      }
-    }, (err, res) => {
-      if (err) return console.log('Error watching file:', err);
-      console.log('Watching file for changes...');
-      const startPageToken = res.data.startPageToken;
-      watchPage(startPageToken, fileId);
-    });
-  }
-  
-  // Set up page watch
-  function watchPage(pageToken, fileId, authClient) {
-    const drive = google.drive({ version: 'v3', auth: authClient });
-    drive.changes.list({
-      pageToken,
-      fields: 'newStartPageToken, changes(fileId, file(name, permissions(emailAddress)))',
-    }, (err, res) => {
-      if (err) return console.log('Error listing changes:', err);
-      const changes = res.data.changes;
-      if (changes && changes.length > 0) {
-        console.log('Changes found:');
-        changes.forEach((change) => {
-          if (change.fileId === fileId) {
-            console.log(`File permissions updated: ${change.file.name}`);
-            console.log('Permissions:');
-            change.file.permissions.forEach((permission) => {
-              console.log(`- ${permission.emailAddress}`);
-            });
-          }
-        });
-      }
-      const newStartPageToken = res.data.newStartPageToken;
-      watchPage(newStartPageToken, fileId);
-    });
-  }
-  
+  const drive = google.drive({ version: 'v3', auth: authClient });
 
-  
-  const readline = require('readline').createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
+  const watchRequest = {
+    id: Math.floor(Math.random() * 1234577) , // Provide a unique ID for the watch event
+    type: 'web_hook',
+    address: 'https://your-webhook-url.com', // Provide a URL, but it won't be used
+  };
+
+  var startPageToken;
+  drive.files.watch({ fileId: fileId, requestBody: watchRequest});
+  setInterval(async () => {
+    try {
+      const changes = await drive.files.list({ 
+        fileId: fileId, 
+        fields: 'files' 
+      });
+      
+      const d = changes?.data?.files
+      const file_metadata = d.find((f) => f.id === fileId);
+      const shared_users = file_metadata?.permissions;
+      if(JSON.stringify(shared_users) !== JSON.stringify(g_shared_users))
+      {
+        g_shared_users = shared_users;
+        console.log("Users added/removed from the file sharing! Updated list of users:",JSON.stringify(g_shared_users,null,4));
+      }
+    } catch (error) {
+      console.error('Error fetching changes:', error);
+    }
+  }, 1000); 
+}
+
+
+const readline = require('readline').createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
+
+
+const question1 = (cl) => {
+  return new Promise((resolve, reject) => {
+    readline.question('enter file ID to see shared users:', (f) => {
+      listUsers(f, cl);
+      resolve()
+    })
+  })
+}
+const question2 = (cl) => {
+  return new Promise((resolve, reject) => {
+    readline.question("enter file ID to monitor for shared user changes:", (f) => {
+      watchFile(f, cl);
+      resolve()
+    })
+  })
+}
+const question3 = (cl) => {
+  return new Promise((resolve, reject) => {
+    readline.question(`enter media file ID to download:`, (f) => {
+      downloadFile(f, cl);
+      resolve()
+    })
+  })
+}
 
 const exec = async () => {
     
     const cl = await authorize();
 
-    // downloadFile("1ESamysq12cEWDklC0ZD_E5KUAcBDv7r18QMULHtIlLs",cl );
-    listFiles(cl);
-
-    // watchFile("1ESamysq12cEWDklC0ZD_E5KUAcBDv7r18QMULHtIlLs",cl )
-    // getChanges("1ESamysq12cEWDklC0ZD_E5KUAcBDv7r18QMULHtIlLs",cl).catch(err => {
-    //   console.error(err);
-    // });
+    console.log("Listing Files in the Google Drive");
+    await listFiles(cl);
     
-    readline.question(`enter file to download:`, (f) => {
-        console.log("f=",f);      
-        listUsers(f, cl);
-        readline.close();
-    });
+    await question1(cl)
+    await question3(cl)
+
+    await question2(cl)
+    readline.close();
     
 }
 
