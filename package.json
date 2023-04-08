@@ -1,0 +1,24 @@
+{
+  "name": "googlefiles",
+  "version": "1.0.0",
+  "description": "app to list files and its users",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rama4/googleFiles.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Rama4/googleFiles/issues"
+  },
+  "homepage": "https://github.com/Rama4/googleFiles#readme",
+  "dependencies": {
+    "@google-cloud/local-auth": "^2.1.0",
+    "express": "^4.18.2",
+    "googleapis": "^105.0.0"
+  }
+}
