@@ -9,6 +9,9 @@ This is an application that lists files and its users.
     npm start
     ```
 3. This will run the application. You will then need to sign into your google account, after which the application lists the files in your drive.
+4. You can enter the id of the file that you want to list the users who share/own the file.
+5. You can then downlad a file by entering its Id.
+6. You can then subscribe for updates in file ownership/sharing, by entering the file id in the console.
 
 ## What does the application do?:
 
